@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Equity curve simulator</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.3.2/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Open Sans', sans-serif;
+            margin: 0;
+            background-color: #121212;
+            color: #E0E0E0;
+            box-sizing: border-box;
+        }
+
+        .custom-button {
+            background-color: #333;
+            color: #E0E0E0;
+            border: 1px solid #444;
+            border-radius: 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .custom-button:hover {
+            background-color: #454545;
+        }
+
+        .custom-button.win {
+            background-color: #1e6f40; /* Dark green */
+            border: none;
+        }
+
+        .custom-button.win:hover {
+            background-color: #25804b;
+        }
+
+        .custom-button.loss {
+            background-color: #823434;
+            border: none;
+        }
+
+        .custom-button.loss:hover {
+            background-color: #9b4040;
+        }
+
+        .custom-button.reset {
+            background-color: #343a40;
+            border: none;
+        }
+
+        .custom-button.reset:hover {
+            background-color: #4e555b;
+        }
+
+        .custom-button.save {
+            background-color: #343a40;
+            border: none;
+            margin-left: 20px;
+        }
+
+        .custom-button.save:hover {
+            background-color: #4e555b;
+        }
+
+        .custom-input::-webkit-inner-spin-button,
+        .custom-input::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .custom-input {
+            -moz-appearance: textfield; /* Firefox */
+            appearance: textfield; /* Rest */
+            background-color: #333;
+            color: #E0E0E0;
+            border: none;
+            border-radius: 5px;
+            width: 100px;
+            height: 28px;
+            padding: 5px 10px;
+            font-size: 16px;
+            margin-left: 15px; /* Space from the previous element */
+        }
+
+        .custom-button.apply {
+            background-color: #343a40; 
+            border: none;
+        }
+
+        .custom-button.apply:hover {
+            background-color: #4e555b;
+        }
+
+        #chartContainer {
+            margin-top: 30px;
+            width: calc(100% - 30px);
+            background-color: #1E1E1E; /* Slightly lighter than body for contrast */
+            border-radius: 5px;
+            padding: 15px;
+        }
+
+        .input-container {
+            position: relative;
+            display: inline-block;
+            margin-left: 20px; /* Adjust spacing between input fields */
+        }
+
+        .input-container label {
+            position: absolute;
+            top: -10px; /* Adjust based on your preference */
+            left: 5px; /* Adjust based on your preference */
+            background-color: #121212; /* Match the body background */
+            font-size: 12px; /* Smaller font size for the superscript effect */
+            color: #E0E0E0; /* Light text color */
+            padding: 0 4px; /* Small padding around the label text */
+        }
+
+        .custom-input, .custom-button.apply {
+            vertical-align: middle; /* Align inputs and buttons vertically */
+        }
+
+        canvas {
+            max-width: 100%;
+        }
+
+        #editableTitle {
+            display: inline-block; /* Allows the element to respect width and height */
+            min-height: 24px; /* Set a minimum height to ensure it occupies space */
+            min-width: 100px; /* Optional: Ensures a minimum width */
+            max-width: 100%; /* Ensures it doesn't overflow its container */
+        }
+
+        #editableTitle:focus {
+            outline: none; /* Removes the default focus outline */
+            cursor: text;
+        }
+
+        #chartCanvasContainer {
+            background-color: #121212;
+            padding: 20px;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div id="chartCanvasContainer">
+    <h1><span id="editableTitle" tabindex="0">Equity curve simulator</span></h1>
+    <p>Total: <span id="total">0</span></p>
+    <button id="winButton" class="custom-button win">Win</button>
+    <button id="lossButton" class="custom-button loss">Loss</button>
+    <button id="resetButton" class="custom-button reset">Reset</button>
+
+    <div class="input-container">
+        <label for="winSizeInput">Win size</label>
+        <input type="number" id="winSizeInput" class="custom-input" placeholder="Win size" min="0" value="1">
+        <button id="winSizeApplyButton" class="custom-button apply">Apply</button>
+    </div>
+
+    <div class="input-container">
+        <label for="commissionInput">Commissions</label>
+        <input type="number" id="commissionInput" class="custom-input" placeholder="Commissions" min="0" value="0">
+        <button id="commissionApplyButton" class="custom-button apply">Apply</button>
+    </div>
+
+    <div id="chartContainer">
+        <canvas id="lineChart" height="400"></canvas>
+    </div>
+    </div>
+
+    <button id="saveChartButton" class="custom-button save">Save chart</button>
+
+    <script>
+        const winButton = document.getElementById("winButton");
+        const lossButton = document.getElementById("lossButton");
+        const resetButton = document.getElementById("resetButton");
+        const totalSpan = document.getElementById("total");
+        const lineChartCanvas = document.getElementById("lineChart").getContext("2d");
+
+        let total = 0;
+        let sumHistory = [];
+        totalSpan.textContent = total;
+
+        let lineChart = new Chart(lineChartCanvas, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Total',
+                    data: [],
+                    borderColor: '#4CAF50',
+                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    fill: true,
+                    pointRadius: 3,
+                    spanGaps: true,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Trades',
+                        },
+                        ticks: {
+                            color: '#E0E0E0',
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Total',
+                        },
+                        ticks: {
+                            color: '#E0E0E0',
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false,
+                    },
+                    tooltip: {
+                        enabled: true,
+                    }
+                }
+            }
+        });
+
+        function updateLineChart() {
+            sumHistory.push(total);
+            if (sumHistory.length > 100) {
+                sumHistory.shift();
+            }
+            lineChart.data.labels = sumHistory.map((_, i) => `${i + 1}`);
+            lineChart.data.datasets[0].data = sumHistory;
+            lineChart.update('none');
+        }
+
+        winButton.addEventListener("click", function() {
+            total += winSize - commission;
+            totalSpan.textContent = total.toFixed(2);
+            updateLineChart();
+        });
+
+        lossButton.addEventListener("click", function() {
+            total -= 1 + commission;
+            totalSpan.textContent = total.toFixed(2);
+            updateLineChart();
+        });
+
+        resetButton.addEventListener("click", function() {
+            total = 0;
+            totalSpan.textContent = total.toFixed(2);
+            sumHistory = [];
+            lineChart.data.labels = [];
+            lineChart.data.datasets[0].data = [];
+            lineChart.update();
+        });
+
+        let winSize = 1;
+        let commission = 0;
+
+        document.getElementById("winSizeApplyButton").addEventListener("click", function() {
+            winSize = parseFloat(document.getElementById("winSizeInput").value) || 1;
+        });
+
+        document.getElementById("commissionApplyButton").addEventListener("click", function() {
+            commission = parseFloat(document.getElementById("commissionInput").value) || 0;
+        });
+
+        document.getElementById("saveChartButton").addEventListener("click", function() {
+            const chartCanvasContainer = document.getElementById("chartCanvasContainer");
+
+            html2canvas(chartCanvasContainer, { scrollY: -window.scrollY }).then(function(canvas) {
+                const title = document.getElementById("editableTitle").textContent || "Equity curve simulator";
+                const now = new Date();
+                const formattedDateTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }).replace(':', '-') + ' - ' + now.toISOString().split('T')[0];
+                const fileName = `${title} - ${formattedDateTime}.png`;
+
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = fileName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                });
+            });
+        });
+
+        document.addEventListener("DOMContentLoaded", function() {
+            const editableTitle = document.getElementById("editableTitle");
+            let originalText = editableTitle.textContent;
+            const defaultText = "Equity curve simulator";
+
+            editableTitle.addEventListener("click", function() {
+                editableTitle.contentEditable = true;
+                editableTitle.focus();
+            });
+
+            editableTitle.addEventListener("keydown", function(e) {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    editableTitle.contentEditable = false;
+                    editableTitle.blur();
+                } else if (e.key === "Escape") {
+                    editableTitle.textContent = originalText;
+                    editableTitle.contentEditable = false;
+                    editableTitle.blur();
+                }
+            });
+
+            editableTitle.addEventListener("blur", function() {
+                if (!editableTitle.textContent.trim()) {
+                    editableTitle.textContent = defaultText;
+                }
+                editableTitle.contentEditable = false;
+                originalText = editableTitle.textContent;
+            });
+        });
+    </script>
+</body>
+</html>
